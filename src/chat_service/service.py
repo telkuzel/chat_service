@@ -1,194 +1,337 @@
-from .gigachat_client import GigaChatClient
+from .concessions import (
+    apply_concession,
+    get_available_concessions,
+)
 from .models import (
     ChatRequest,
     ChatResponse,
-    Decision,
     Message,
-    Action,
     NPCResponse,
+    PlayerDecision,
+)
+from .plot_events import (
+    apply_plot_event,
+    get_available_plot_events,
+    reveal_interest,
 )
 from .prompts import (
     build_extraction_prompt,
-    build_response_prompt,
+    build_npc_prompt,
 )
-from .validator import (
-    validate_decision,
+from .state import (
+    advance_turn,
+)
+from .termination import (
+    force_outcome,
 )
 
 
 class ChatService:
 
-    def __init__(self, llm: GigaChatClient):
-        self.llm = llm
+    def __init__(self, client):
+        self.client = client
 
     def process_message(
         self,
         request: ChatRequest,
     ) -> ChatResponse:
 
-        # ----------------------------------------------
-        # 1. Анализируем сообщение пользователя
-        # ----------------------------------------------
+        scenario = request.scenario
+        state = request.state
+        history = request.history
+        message = request.message
+
+        # -------------------------------------------------
+        # 1. Если переговоры уже закончены
+        # -------------------------------------------------
+
+        if state.outcome is not None:
+
+            return ChatResponse(
+                message=Message(
+                    role="assistant",
+                    content=(
+                        "Переговоры уже завершены."
+                    ),
+                ),
+                state=state,
+            )
+
+        # -------------------------------------------------
+        # 2. Распознаём намерение игрока
+        # -------------------------------------------------
 
         extraction_prompt = build_extraction_prompt(
-            scenario=request.scenario,
-            state=request.state,
-            message=request.message,
+            scenario=scenario,
+            state=state,
+            history=history,
+            message=message,
         )
 
-        raw_decision = self.llm.ask_json(
+        raw_decision = self.client.ask_json(
             extraction_prompt
         )
 
-        decision = Decision.model_validate(
+        decision = PlayerDecision.model_validate(
             raw_decision
         )
 
-        # ----------------------------------------------
-        # 2. Проверяем решение
-        # ----------------------------------------------
+        # -------------------------------------------------
+        # 3. Запоминаем намерение
+        # -------------------------------------------------
 
-        valid, validation_message = validate_decision(
-            scenario=request.scenario,
-            state=request.state,
+        state.current_player_intent = (
+            decision.player_intent
+        )
+
+        # -------------------------------------------------
+        # 4. Явное принятие / отказ
+        # -------------------------------------------------
+
+        if decision.player_intent == "accept":
+
+            state.current_opponent_action = "accept"
+
+            state.outcome = "agreement"
+
+            return ChatResponse(
+                message=Message(
+                    role="assistant",
+                    content=(
+                        "Договорённость принята. "
+                        "Переговоры завершены."
+                    ),
+                ),
+                state=state,
+            )
+
+        if decision.player_intent == "reject":
+
+            state.current_opponent_action = "reject"
+
+            state.outcome = "breakdown"
+
+            return ChatResponse(
+                message=Message(
+                    role="assistant",
+                    content=(
+                        "Хорошо, тогда на этом "
+                        "переговоры завершим."
+                    ),
+                ),
+                state=state,
+            )
+
+        # -------------------------------------------------
+        # 5. Продвигаем ход
+        # -------------------------------------------------
+
+        advance_turn(state)
+
+        # -------------------------------------------------
+        # 6. Проверяем специальные сюжетные события
+        # -------------------------------------------------
+
+        active_events = get_available_plot_events(
+            scenario,
+            state,
+        )
+
+        for event in active_events:
+
+            apply_plot_event(
+                scenario,
+                state,
+                event.id,
+            )
+
+        # -------------------------------------------------
+        # 7. Определяем доступные уступки
+        # -------------------------------------------------
+
+        available_concessions = (
+            get_available_concessions(
+                scenario,
+                state,
+            )
+        )
+
+        # -------------------------------------------------
+        # 8. Генерируем ответ NPC
+        # -------------------------------------------------
+
+        npc_prompt = build_npc_prompt(
+            scenario=scenario,
+            state=state,
+            history=history,
+            message=message,
             decision=decision,
+            available_concessions=(
+                available_concessions
+            ),
+            active_events=active_events,
         )
 
-        # ----------------------------------------------
-        # 3. ACCEPT
-        # ----------------------------------------------
-
-        if (
-            valid
-            and decision.action == Action.ACCEPT
-        ):
-
-            new_state = request.state.model_copy(
-                deep=True
-            )
-
-            new_state.status = "accepted"
-
-            response_text = (
-                "Хорошо, договорились. "
-                "Я принимаю ваши условия."
-            )
-
-            return ChatResponse(
-                message=Message(
-                    role="assistant",
-                    content=response_text,
-                ),
-                state=new_state,
-                decision=decision,
-            )
-
-        # ----------------------------------------------
-        # 4. REJECT
-        # ----------------------------------------------
-
-        if (
-            valid
-            and decision.action == Action.REJECT
-        ):
-
-            new_state = request.state.model_copy(
-                deep=True
-            )
-
-            new_state.status = "rejected"
-
-            response_text = (
-                "Понимаю. В таком случае "
-                "мы не сможем договориться."
-            )
-
-            return ChatResponse(
-                message=Message(
-                    role="assistant",
-                    content=response_text,
-                ),
-                state=new_state,
-                decision=decision,
-            )
-
-        # ----------------------------------------------
-        # 5. Если решение невалидно
-        # ----------------------------------------------
-
-        if not valid:
-
-            decision_for_llm = {
-                "action": decision.action.value,
-                "price": decision.price,
-                "reason": decision.reason,
-                "validation": {
-                    "valid": False,
-                    "message": validation_message,
-                },
-            }
-
-        else:
-
-            decision_for_llm = {
-                "action": decision.action.value,
-                "price": decision.price,
-                "reason": decision.reason,
-                "validation": {
-                    "valid": True,
-                    "message": validation_message,
-                },
-            }
-
-        # ----------------------------------------------
-        # 6. Генерируем ответ NPC
-        # ----------------------------------------------
-
-        response_prompt = build_response_prompt(
-            scenario=request.scenario,
-            state=request.state,
-            history=request.history,
-            message=request.message,
-            decision=decision_for_llm,
-        )
-
-        raw_response = self.llm.ask_json(
-            response_prompt
+        raw_response = self.client.ask_json(
+            npc_prompt
         )
 
         npc_response = NPCResponse.model_validate(
             raw_response
         )
 
-        # ----------------------------------------------
-        # 7. Обновляем state
-        # ----------------------------------------------
+        # -------------------------------------------------
+        # 9. Применяем действие NPC
+        # -------------------------------------------------
 
-        new_state = request.state.model_copy(
-            deep=True
+        state.current_opponent_action = (
+            npc_response.action
         )
 
-        if npc_response.action == Action.COUNTER_OFFER:
+        if npc_response.concession_id:
 
-            if npc_response.price is not None:
+            concession = apply_concession(
+                scenario,
+                state,
+                npc_response.concession_id,
+            )
 
-                new_state.current_price = npc_response.price
+            # Если LLM попытался применить
+            # недоступную уступку — игнорируем её.
+            if concession is None:
+                npc_response.concession_id = None
 
-                new_state.last_opponent_price = (
-                    npc_response.price
+        # -------------------------------------------------
+        # 10. Обрабатываем insult
+        # -------------------------------------------------
+
+        if decision.player_intent == "insult":
+
+            # Пока применяем penalty к trust.
+            # hostility_reaction из сценария
+            # определяет, что это вообще допустимо.
+
+            if (
+                scenario.state_model
+                .hostility_reaction
+                == "penalty"
+            ):
+                current_trust = state.metrics.get(
+                    "trust"
                 )
 
-        # Если NPC ответил встречным предложением,
-        # пока здесь оставляем текущую цену.
-        #
-        # Позже можно добавить отдельный extraction
-        # ответа NPC или structured response.
+                if current_trust is not None:
+                    state.metrics["trust"] = max(
+                        0,
+                        current_trust - 10,
+                    )
+
+        # -------------------------------------------------
+        # 11. Проверяем скрытые интересы
+        # -------------------------------------------------
+
+        self._process_interest_reveals(
+            scenario,
+            state,
+            decision,
+        )
+
+        # -------------------------------------------------
+        # 12. Проверяем завершение
+        # -------------------------------------------------
+
+        self._check_default_termination(
+            scenario,
+            state,
+        )
+
+        # -------------------------------------------------
+        # 13. Возвращаем результат
+        # -------------------------------------------------
 
         return ChatResponse(
             message=Message(
                 role="assistant",
                 content=npc_response.message,
             ),
-            state=new_state,
-            decision=decision,
+            state=state,
         )
+
+    @staticmethod
+    def _process_interest_reveals(
+        scenario,
+        state,
+        decision,
+    ):
+
+        """
+        reveal_when в текущем JSON является
+        естественно-языковым описанием.
+
+        Поэтому здесь используем безопасные
+        эвристики по намерению игрока.
+
+        В дальнейшем это можно вынести
+        в отдельную систему правил.
+        """
+
+        if (
+            "interest_1"
+            not in state.revealed_interests
+            and decision.player_intent
+            == "ask_clarification"
+        ):
+            reveal_interest(
+                state,
+                "interest_1",
+            )
+
+        if (
+            "interest_2"
+            not in state.revealed_interests
+            and decision.player_intent
+            == "summarize"
+        ):
+            reveal_interest(
+                state,
+                "interest_2",
+            )
+
+    @staticmethod
+    def _check_default_termination(
+        scenario,
+        state,
+    ):
+
+        if state.outcome is not None:
+            return
+
+        # Критические состояния
+        trust = state.metrics.get(
+            "trust"
+        )
+
+        tension = state.metrics.get(
+            "tension"
+        )
+
+        if trust is not None and trust <= 10:
+            force_outcome(
+                state,
+                "breakdown",
+            )
+            return
+
+        if tension is not None and tension >= 90:
+            force_outcome(
+                state,
+                "breakdown",
+            )
+            return
+
+        # Истёк лимит ходов
+        if state.turns_remaining <= 0:
+            force_outcome(
+                state,
+                "timeout",
+            )

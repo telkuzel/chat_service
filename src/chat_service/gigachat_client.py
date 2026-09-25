@@ -22,7 +22,10 @@ class GigaChatClient:
             temperature=temperature,
         )
 
-    def ask(self, prompt: str) -> str:
+    def ask(
+        self,
+        prompt: str,
+    ) -> str:
 
         response = self.client.chat(
             Chat(
@@ -37,15 +40,41 @@ class GigaChatClient:
 
         return response.choices[0].message.content
 
-    def ask_json(self, prompt: str) -> dict:
+    def ask_json(
+        self,
+        prompt: str,
+    ) -> dict:
 
-        content = self.ask(prompt)
+        content = self.ask(prompt).strip()
 
-        content = content.strip()
-
+        # Убираем markdown code fence
         if content.startswith("```"):
-            content = content.replace("```json", "")
-            content = content.replace("```", "")
-            content = content.strip()
+            lines = content.splitlines()
 
-        return json.loads(content)
+            if lines and lines[0].strip().startswith("```"):
+                lines = lines[1:]
+
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+
+            content = "\n".join(lines).strip()
+
+        # На случай, если модель добавила текст
+        # перед JSON.
+        start = content.find("{")
+        end = content.rfind("}")
+
+        if start == -1 or end == -1:
+            raise ValueError(
+                f"GigaChat не вернул JSON:\n{content}"
+            )
+
+        content = content[start:end + 1]
+
+        try:
+            return json.loads(content)
+
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Некорректный JSON от GigaChat:\n{content}"
+            ) from exc

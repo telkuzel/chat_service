@@ -1,940 +1,192 @@
-```html
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
-    <title>Negotiation Simulator — Test UI</title>
-
-    <style>
-        * {
-            box-sizing: border-box;
-        }
-
-        body {
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background: #f3f4f6;
-            color: #222;
-        }
-
-        .app {
-            max-width: 1100px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        h1 {
-            margin-top: 0;
-        }
-
-        .layout {
-            display: grid;
-            grid-template-columns: 1fr 320px;
-            gap: 20px;
-        }
-
-        .panel {
-            background: white;
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-        }
-
-        .chat {
-            height: 600px;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .messages {
-            flex: 1;
-            overflow-y: auto;
-            padding: 10px 0;
-        }
-
-        .message {
-            margin-bottom: 15px;
-            padding: 12px 15px;
-            border-radius: 10px;
-            max-width: 80%;
-            white-space: pre-wrap;
-        }
-
-        .message.user {
-            margin-left: auto;
-            background: #dbeafe;
-        }
-
-        .message.assistant {
-            margin-right: auto;
-            background: #e5e7eb;
-        }
-
-        .message-role {
-            font-size: 12px;
-            font-weight: bold;
-            margin-bottom: 5px;
-            opacity: 0.7;
-        }
-
-        .input-area {
-            display: flex;
-            gap: 10px;
-            border-top: 1px solid #ddd;
-            padding-top: 15px;
-        }
-
-        textarea {
-            flex: 1;
-            resize: none;
-            height: 60px;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            font-family: inherit;
-        }
-
-        button {
-            border: none;
-            border-radius: 6px;
-            padding: 10px 16px;
-            cursor: pointer;
-            background: #2563eb;
-            color: white;
-        }
-
-        button:hover {
-            background: #1d4ed8;
-        }
-
-        button:disabled {
-            background: #9ca3af;
-            cursor: not-allowed;
-        }
-
-        .secondary {
-            background: #6b7280;
-        }
-
-        .secondary:hover {
-            background: #4b5563;
-        }
-
-        .state-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid #eee;
-        }
-
-        .state-value {
-            font-weight: bold;
-        }
-
-        .scenario {
-            margin-top: 20px;
-        }
-
-        .scenario pre {
-            background: #f3f4f6;
-            padding: 10px;
-            border-radius: 6px;
-            overflow-x: auto;
-            font-size: 12px;
-        }
-
-        .status {
-            padding: 10px;
-            border-radius: 6px;
-            background: #f3f4f6;
-            margin-bottom: 15px;
-        }
-
-        .status.ok {
-            background: #dcfce7;
-            color: #166534;
-        }
-
-        .status.error {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        .status.loading {
-            background: #fef3c7;
-            color: #92400e;
-        }
-
-        @media (max-width: 800px) {
-            .layout {
-                grid-template-columns: 1fr;
-            }
-        }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Negotiation Simulator</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
-
 <div class="app">
 
-    <h1>Negotiation Simulator</h1>
+    <header class="header">
+        <div>
+            <h1>Negotiation Simulator</h1>
+            <p id="scenarioTitle">Загрузка сценария...</p>
+        </div>
 
-    <div class="layout">
+        <div class="header-actions">
+            <span id="healthStatus" class="status offline">
+                API: проверка...
+            </span>
 
-        <!-- CHAT -->
+            <button id="newDialogButton" class="secondary-button">
+                Новый диалог
+            </button>
+        </div>
+    </header>
 
-        <div class="panel chat">
+    <main class="main">
 
-            <div id="status" class="status">
-                Проверка Chat Service...
+        <section class="chat-panel">
+
+            <div id="chat" class="chat">
+                <div class="loading">
+                    Загрузка сценария...
+                </div>
             </div>
-
-            <div
-                id="messages"
-                class="messages"
-            ></div>
 
             <div class="input-area">
-
                 <textarea
                     id="messageInput"
-                    placeholder="Введите сообщение..."
+                    placeholder="Введите вашу реплику..."
+                    rows="3"
+                    disabled
                 ></textarea>
 
-                <button
-                    id="sendButton"
-                    onclick="sendMessage()"
-                >
-                    Отправить
-                </button>
+                <div class="input-footer">
+                    <span>Enter — отправить, Shift+Enter — новая строка</span>
 
+                    <button id="sendButton" disabled>
+                        Отправить
+                    </button>
+                </div>
             </div>
 
-        </div>
+        </section>
 
+        <aside class="sidebar">
 
-        <!-- STATE -->
+            <section class="panel">
+                <h2>Состояние</h2>
 
-        <div class="panel">
+                <div class="state-item">
+                    <div class="state-header">
+                        <span>Trust</span>
+                        <strong id="trustValue">-</strong>
+                    </div>
+                    <div class="progress-bar">
+                        <div id="trustBar" class="progress"></div>
+                    </div>
+                </div>
 
-            <h2>State</h2>
+                <div class="state-item">
+                    <div class="state-header">
+                        <span>Tension</span>
+                        <strong id="tensionValue">-</strong>
+                    </div>
+                    <div class="progress-bar">
+                        <div id="tensionBar" class="progress"></div>
+                    </div>
+                </div>
 
-            <div class="state-row">
-                <span>Статус</span>
-                <span
-                    id="stateStatus"
-                    class="state-value"
-                >
-                    in_progress
-                </span>
-            </div>
+                <div class="state-item">
+                    <div class="state-header">
+                        <span>Progress</span>
+                        <strong id="progressValue">-</strong>
+                    </div>
+                    <div class="progress-bar">
+                        <div id="progressBar" class="progress"></div>
+                    </div>
+                </div>
 
-            <div class="state-row">
-                <span>Текущая цена</span>
-                <span
-                    id="currentPrice"
-                    class="state-value"
-                >
-                    —
-                </span>
-            </div>
+                <div class="state-item">
+                    <div class="state-header">
+                        <span>Concession readiness</span>
+                        <strong id="readinessValue">-</strong>
+                    </div>
+                    <div class="progress-bar">
+                        <div id="readinessBar" class="progress"></div>
+                    </div>
+                </div>
 
-            <div class="state-row">
-                <span>Цена пользователя</span>
-                <span
-                    id="userPrice"
-                    class="state-value"
-                >
-                    —
-                </span>
-            </div>
+                <div class="state-grid">
+                    <div>
+                        <span>Ход</span>
+                        <strong id="turnValue">-</strong>
+                    </div>
 
-            <div class="state-row">
-                <span>Цена оппонента</span>
-                <span
-                    id="opponentPrice"
-                    class="state-value"
-                >
-                    —
-                </span>
-            </div>
+                    <div>
+                        <span>Осталось</span>
+                        <strong id="turnsRemainingValue">-</strong>
+                    </div>
 
+                    <div>
+                        <span>Intent</span>
+                        <strong id="intentValue">-</strong>
+                    </div>
 
-            <div class="scenario">
+                    <div>
+                        <span>Action</span>
+                        <strong id="actionValue">-</strong>
+                    </div>
+                </div>
 
-                <h2>Scenario</h2>
+                <div id="outcomeContainer" class="outcome hidden">
+                    <span>Результат</span>
+                    <strong id="outcomeValue">-</strong>
+                </div>
+            </section>
 
-                <pre id="scenarioPreview"></pre>
+            <section class="panel">
+                <h2>Сценарий</h2>
 
-            </div>
+                <div class="info-row">
+                    <span>Область</span>
+                    <strong id="domain">-</strong>
+                </div>
 
+                <div class="info-row">
+                    <span>Тема</span>
+                    <strong id="topic">-</strong>
+                </div>
 
-            <button
-                class="secondary"
-                onclick="resetChat()"
-            >
-                Начать заново
-            </button>
+                <div class="info-row">
+                    <span>Сложность</span>
+                    <strong id="difficulty">-</strong>
+                </div>
 
-        </div>
+                <div class="info-row">
+                    <span>Игрок</span>
+                    <strong id="playerRole">-</strong>
+                </div>
 
-    </div>
+                <div class="info-row">
+                    <span>Оппонент</span>
+                    <strong id="opponent">-</strong>
+                </div>
+            </section>
 
+            <section class="panel">
+                <h2>Debug</h2>
+
+                <h3>Раскрытые интересы</h3>
+                <div id="revealedInterests" class="debug-list">
+                    Нет
+                </div>
+
+                <h3>Применённые уступки</h3>
+                <div id="appliedConcessions" class="debug-list">
+                    Нет
+                </div>
+
+                <h3>События</h3>
+                <div id="plotEvents" class="debug-list">
+                    Нет
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>Raw state</h2>
+                <pre id="rawState">{}</pre>
+            </section>
+
+        </aside>
+
+    </main>
 </div>
 
-
-<script>
-
-    // ==========================================
-    // CONFIGURATION
-    // ==========================================
-
-    const API_URL =
-        "http://127.0.0.1:8000";
-
-
-    // ==========================================
-    // SCENARIO
-    // ==========================================
-
-    const scenario = {
-
-        name: "Переговоры о зарплате",
-
-        description:
-            "Кандидат обсуждает условия работы и зарплату с HR-менеджером.",
-
-        player: {
-
-            name: "Алексей",
-
-            role: "Кандидат",
-
-            background:
-                "2 года опыта C# и ASP.NET",
-
-            goal:
-                "Получить зарплату не менее 165000 рублей",
-
-            initial_position:
-                "Ожидаемая зарплата — 180000 рублей"
-
-        },
-
-        opponent: {
-
-            name: "Анна",
-
-            role: "HR-менеджер",
-
-            background:
-                "5 лет занимается наймом разработчиков",
-
-            goal:
-                "Нанять подходящего разработчика в рамках бюджета компании",
-
-            initial_position:
-                "Первоначальное предложение — 160000 рублей",
-
-            hidden_information: {
-
-                max_salary: 175000
-
-            },
-
-            opening_message:
-                "Алексей, рад познакомиться. Давайте обсудим условия работы и ваши ожидания по зарплате.",
-
-            negotiation_style: {
-
-                flexibility: "low",
-
-                concession_size: 5000,
-
-                requires_justification: true,
-
-                can_offer_alternatives: true,
-
-                alternative_offers: [
-
-                    "пересмотр зарплаты после испытательного срока",
-
-                    "бонус после испытательного срока",
-
-                    "повышение зарплаты после трёх месяцев работы"
-
-                ],
-
-                description:
-                    "Неохотно повышает зарплату. Предпочитает небольшие уступки и может предложить пересмотр условий после испытательного срока."
-
-            }
-
-        },
-
-        rules: {
-
-            max_opponent_salary: 175000,
-
-            max_concession_per_turn: 5000
-
-        }
-
-    };
-
-
-    // ==========================================
-    // STATE
-    // ==========================================
-
-    let state = {
-
-        status: "in_progress",
-
-        current_price: 160000,
-
-        last_user_price: null,
-
-        last_opponent_price: 160000
-
-    };
-
-
-    // ==========================================
-    // HISTORY
-    // ==========================================
-
-    let history = [];
-
-
-    // ==========================================
-    // INITIALIZATION
-    // ==========================================
-
-    window.onload = async function () {
-
-        document.getElementById(
-            "scenarioPreview"
-        ).textContent =
-            JSON.stringify(
-                scenario,
-                null,
-                2
-            );
-
-        updateStateUI();
-
-        addMessage(
-            "assistant",
-            scenario.opponent.opening_message
-        );
-
-        history.push({
-
-            role: "assistant",
-
-            content:
-                scenario.opponent.opening_message
-
-        });
-
-        await checkHealth();
-
-    };
-
-
-    // ==========================================
-    // HEALTH CHECK
-    // ==========================================
-
-    async function checkHealth() {
-
-        const statusElement =
-            document.getElementById("status");
-
-        try {
-
-            const response =
-                await fetch(
-                    `${API_URL}/health`
-                );
-
-            if (!response.ok) {
-
-                throw new Error(
-                    "HTTP " + response.status
-                );
-
-            }
-
-            statusElement.textContent =
-                "Chat Service работает";
-
-            statusElement.className =
-                "status ok";
-
-        }
-        catch (error) {
-
-            statusElement.textContent =
-                "Chat Service недоступен: " +
-                error.message;
-
-            statusElement.className =
-                "status error";
-
-        }
-
-    }
-
-
-    // ==========================================
-    // SEND MESSAGE
-    // ==========================================
-
-    async function sendMessage() {
-
-        const input =
-            document.getElementById(
-                "messageInput"
-            );
-
-        const button =
-            document.getElementById(
-                "sendButton"
-            );
-
-        const message =
-            input.value.trim();
-
-        if (!message) {
-
-            return;
-
-        }
-
-        if (
-            state.status !==
-            "in_progress"
-        ) {
-
-            alert(
-                "Переговоры уже завершены."
-            );
-
-            return;
-
-        }
-
-
-        // Show user message
-
-        addMessage(
-            "user",
-            message
-        );
-
-
-        // Add to history
-
-        history.push({
-
-            role: "user",
-
-            content: message
-
-        });
-
-
-        // Clear input
-
-        input.value = "";
-
-
-        // Disable button
-
-        button.disabled = true;
-
-        button.textContent =
-            "Отправка...";
-
-
-        try {
-
-            const response =
-                await fetch(
-                    `${API_URL}/chat/message`,
-                    {
-
-                        method: "POST",
-
-                        headers: {
-
-                            "Content-Type":
-                                "application/json"
-
-                        },
-
-                        body: JSON.stringify({
-
-                            scenario: scenario,
-
-                            state: state,
-
-                            history: history,
-
-                            message: message
-
-                        })
-
-                    }
-                );
-
-
-            if (!response.ok) {
-
-                const errorText =
-                    await response.text();
-
-                throw new Error(
-                    `HTTP ${response.status}: ${errorText}`
-                );
-
-            }
-
-
-            const data =
-                await response.json();
-
-
-            // ==================================
-            // UPDATE STATE
-            // ==================================
-
-            state =
-                data.state;
-
-
-            updateStateUI();
-
-
-            // ==================================
-            // SHOW NPC RESPONSE
-            // ==================================
-
-            const npcMessage =
-                data.message.content;
-
-
-            addMessage(
-                "assistant",
-                npcMessage
-            );
-
-
-            // Add NPC response to history
-
-            history.push({
-
-                role: "assistant",
-
-                content: npcMessage
-
-            });
-
-
-            // ==================================
-            // CHECK END
-            // ==================================
-
-            if (
-                state.status !==
-                "in_progress"
-            ) {
-
-                input.disabled = true;
-
-                button.disabled = true;
-
-                button.textContent =
-                    "Переговоры завершены";
-
-            }
-
-        }
-        catch (error) {
-
-            console.error(error);
-
-            showError(
-                error.message
-            );
-
-        }
-        finally {
-
-            if (
-                state.status ===
-                "in_progress"
-            ) {
-
-                button.disabled = false;
-
-                button.textContent =
-                    "Отправить";
-
-            }
-
-        }
-
-    }
-
-
-    // ==========================================
-    // ADD MESSAGE
-    // ==========================================
-
-    function addMessage(
-        role,
-        text
-    ) {
-
-        const container =
-            document.getElementById(
-                "messages"
-            );
-
-
-        const messageElement =
-            document.createElement(
-                "div"
-            );
-
-        messageElement.className =
-            `message ${role}`;
-
-
-        const roleElement =
-            document.createElement(
-                "div"
-            );
-
-        roleElement.className =
-            "message-role";
-
-
-        roleElement.textContent =
-            role === "user"
-                ? "Вы"
-                : scenario.opponent.name;
-
-
-        const textElement =
-            document.createElement(
-                "div"
-            );
-
-        textElement.textContent =
-            text;
-
-
-        messageElement.appendChild(
-            roleElement
-        );
-
-        messageElement.appendChild(
-            textElement
-        );
-
-
-        container.appendChild(
-            messageElement
-        );
-
-
-        container.scrollTop =
-            container.scrollHeight;
-
-    }
-
-
-    // ==========================================
-    // UPDATE STATE UI
-    // ==========================================
-
-    function updateStateUI() {
-
-        document.getElementById(
-            "stateStatus"
-        ).textContent =
-            state.status;
-
-
-        document.getElementById(
-            "currentPrice"
-        ).textContent =
-            formatPrice(
-                state.current_price
-            );
-
-
-        document.getElementById(
-            "userPrice"
-        ).textContent =
-            formatPrice(
-                state.last_user_price
-            );
-
-
-        document.getElementById(
-            "opponentPrice"
-        ).textContent =
-            formatPrice(
-                state.last_opponent_price
-            );
-
-    }
-
-
-    // ==========================================
-    // FORMAT PRICE
-    // ==========================================
-
-    function formatPrice(
-        price
-    ) {
-
-        if (
-            price === null ||
-            price === undefined
-        ) {
-
-            return "—";
-
-        }
-
-        return (
-            new Intl.NumberFormat(
-                "ru-RU"
-            ).format(price)
-            + " ₽"
-        );
-
-    }
-
-
-    // ==========================================
-    // ERROR
-    // ==========================================
-
-    function showError(
-        message
-    ) {
-
-        addMessage(
-            "assistant",
-            "Ошибка: " + message
-        );
-
-    }
-
-
-    // ==========================================
-    // RESET
-    // ==========================================
-
-    function resetChat() {
-
-        state = {
-
-            status: "in_progress",
-
-            current_price: 160000,
-
-            last_user_price: null,
-
-            last_opponent_price: 160000
-
-        };
-
-
-        history = [];
-
-
-        document.getElementById(
-            "messages"
-        ).innerHTML = "";
-
-
-        document.getElementById(
-            "messageInput"
-        ).disabled = false;
-
-
-        document.getElementById(
-            "sendButton"
-        ).disabled = false;
-
-
-        document.getElementById(
-            "sendButton"
-        ).textContent =
-            "Отправить";
-
-
-        updateStateUI();
-
-
-        addMessage(
-            "assistant",
-            scenario.opponent.opening_message
-        );
-
-
-        history.push({
-
-            role: "assistant",
-
-            content:
-                scenario.opponent.opening_message
-
-        });
-
-    }
-
-
-    // ==========================================
-    // ENTER TO SEND
-    // ==========================================
-
-    document
-        .getElementById("messageInput")
-        .addEventListener(
-            "keydown",
-            function(event) {
-
-                if (
-                    event.key === "Enter" &&
-                    !event.shiftKey
-                ) {
-
-                    event.preventDefault();
-
-                    sendMessage();
-
-                }
-
-            }
-        );
-
-</script>
-
+<script src="app.js"></script>
 </body>
 </html>
-```

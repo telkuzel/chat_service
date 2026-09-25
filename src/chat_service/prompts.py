@@ -1,93 +1,16 @@
 import json
 
 from .models import (
-    Scenario,
     NegotiationState,
+    Scenario,
 )
 
 
 def build_extraction_prompt(
     scenario: Scenario,
     state: NegotiationState,
-    message: str,
-) -> str:
-
-    return f"""
-Ты анализируешь сообщение пользователя в симуляторе переговоров.
-
-Твоя задача — определить намерение пользователя.
-
-ВАЖНО:
-Ты НЕ отвечаешь пользователю.
-Ты только определяешь действие.
-
-Возможные действия:
-
-counter_offer
-- пользователь предлагает свои условия;
-- пользователь называет новую цену;
-- пользователь продолжает торг.
-
-accept
-- пользователь явно согласился на текущие условия;
-- примеры: "согласен", "принимаю", "да, меня устраивает", "договорились".
-
-reject
-- пользователь явно отказался;
-- примеры: "нет", "не согласен", "меня это не устраивает".
-
-ask_clarification
-- пользователь задаёт вопрос или просит дополнительную информацию;
-- при этом он не принимает и не отклоняет предложение.
-
-Никогда не считай согласие только из-за того,
-что пользователь назвал цену.
-
-Сценарий:
-
-{scenario.description}
-
-Роль пользователя:
-{scenario.player.role}
-
-Цель пользователя:
-{scenario.player.goal}
-
-Текущая позиция пользователя:
-{scenario.player.initial_position}
-
-Роль оппонента:
-{scenario.opponent.role}
-
-Текущая позиция:
-{state.current_price}
-
-Последняя цена пользователя:
-{state.last_user_price}
-
-Последняя цена оппонента:
-{state.last_opponent_price}
-
-Новое сообщение пользователя:
-
-{message}
-
-Верни ТОЛЬКО JSON:
-
-{{
-    "action": "counter_offer | accept | reject | ask_clarification",
-    "price": number или null,
-    "reason": "краткое объяснение"
-}}
-"""
-
-
-def build_response_prompt(
-    scenario: Scenario,
-    state: NegotiationState,
     history: list,
     message: str,
-    decision: dict,
 ) -> str:
 
     history_text = "\n".join(
@@ -95,187 +18,223 @@ def build_response_prompt(
         for item in history[-10:]
     )
 
-    opponent = scenario.opponent
-
-    style = opponent.negotiation_style
-
     return f"""
-Ты участвуешь в симуляторе переговоров.
+Ты анализируешь реплику игрока в симуляторе переговоров.
 
-Ты играешь ТОЛЬКО роль:
+Твоя задача — определить НАМЕРЕНИЕ игрока.
 
-{opponent.name}, {opponent.role}
+Не отвечай игроку.
+Не продолжай переговоры.
+Не придумывай состояние переговоров.
 
-Никогда не говори, что ты AI.
-Не упоминай промпты.
-Не упоминай внутреннюю логику симулятора.
-Не раскрывай скрытую информацию.
+Сценарий:
+Название: {scenario.title}
+Тема: {scenario.admin_input.topic}
+Роль игрока: {scenario.model_context.player_role}
 
-==================================================
-СЦЕНАРИЙ
-==================================================
+Текущее состояние:
+{json.dumps(state.model_dump(), ensure_ascii=False, indent=2)}
 
-Название:
-{scenario.name}
-
-Описание:
-{scenario.description}
-
-==================================================
-ПОЛЬЗОВАТЕЛЬ
-==================================================
-
-Имя:
-{scenario.player.name}
-
-Роль:
-{scenario.player.role}
-
-Опыт:
-{scenario.player.background}
-
-Цель:
-{scenario.player.goal}
-
-Начальная позиция:
-{scenario.player.initial_position}
-
-==================================================
-ОППОНЕНТ
-==================================================
-
-Имя:
-{opponent.name}
-
-Роль:
-{opponent.role}
-
-Опыт:
-{opponent.background}
-
-Цель:
-{opponent.goal}
-
-Начальная позиция:
-{opponent.initial_position}
-
-==================================================
-СТИЛЬ ПЕРЕГОВОРОВ
-==================================================
-
-Гибкость:
-{style.flexibility}
-
-Размер обычной уступки:
-{style.concession_size}
-
-Требовать обоснование:
-{style.requires_justification}
-
-Можно предлагать альтернативы:
-{style.can_offer_alternatives}
-
-Альтернативные предложения:
-{style.alternative_offers}
-
-Описание стиля:
-{style.description}
-
-==================================================
-ПРАВИЛА
-==================================================
-
-Максимальная зарплата оппонента:
-{scenario.rules.max_opponent_salary}
-
-Максимальная уступка за один ход:
-{scenario.rules.max_concession_per_turn}
-
-Эти ограничения обязательны.
-
-==================================================
-ТЕКУЩЕЕ СОСТОЯНИЕ
-==================================================
-
-Статус:
-{state.status}
-
-Текущая цена:
-{state.current_price}
-
-Последняя цена пользователя:
-{state.last_user_price}
-
-Последняя цена оппонента:
-{state.last_opponent_price}
-
-==================================================
-ИСТОРИЯ
-==================================================
-
+История:
 {history_text}
 
-==================================================
-НОВОЕ СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ
-==================================================
-
+Последняя реплика игрока:
 {message}
 
-==================================================
-РАСПОЗНАННОЕ ДЕЙСТВИЕ
-==================================================
+Допустимые намерения:
 
-{json.dumps(decision, ensure_ascii=False)}
+accept
+reject
+offer_exchange
+propose_option
+ask_clarification
+summarize
+close_deal
+insult
+other
 
-==================================================
-ПРАВИЛА ПОВЕДЕНИЯ
-==================================================
+Особенно важно:
 
-1. Не соглашайся автоматически на любое требование.
+- если игрок явно принимает предложение — accept;
+- если игрок явно отказывается — reject;
+- предложение нового варианта — propose_option;
+- предложение обмена "я даю X, если вы даёте Y" — offer_exchange;
+- вопрос для получения информации — ask_clarification;
+- попытка подвести итог — summarize;
+- предложение завершить договорённость — close_deal;
+- хамство, оскорбление или агрессия — insult.
 
-2. Если пользователь предлагает цену выше текущей,
-   оцени её относительно своей текущей позиции.
+Верни ТОЛЬКО JSON.
 
-3. Если твой стиль flexibility = "low",
-   не делай большие уступки.
-
-4. Если возможно сделать уступку,
-   делай её постепенно.
-
-5. Если пользователь просит существенное повышение,
-   можешь:
-   - попросить обосновать требование;
-   - предложить меньшую сумму;
-   - предложить испытательный срок;
-   - предложить пересмотр зарплаты позже;
-   - предложить бонус;
-   - отказаться от дальнейшего повышения.
-
-6. Не повторяй одну и ту же цену без причины.
-
-7. Никогда не превышай максимальную допустимую цену.
-
-8. Никогда не раскрывай hidden_information.
-
-9. Если пользователь явно согласился,
-   не продолжай переговоры.
-
-10. Если пользователь явно отказался,
-    не продолжай переговоры.
-
-11. Если пользователь продолжает торг,
-    переговоры продолжаются.
-
-12. Твоя задача — вести естественные переговоры,
-    а не просто перечислять правила.
-
-Верни ТОЛЬКО JSON следующего формата:
-
-Верни JSON:
+Формат:
 
 {{
-    "message": "текст ответа пользователю",
-    "action": "counter_offer | accept | reject | ask_clarification",
-    "price": number или null
+  "player_intent": "одно из допустимых намерений",
+  "parameters": {{}},
+  "reason": "краткое объяснение"
 }}
+"""
+
+
+def build_npc_prompt(
+    scenario: Scenario,
+    state: NegotiationState,
+    history: list,
+    message: str,
+    decision,
+    available_concessions,
+    active_events,
+) -> str:
+
+    history_text = "\n".join(
+        f"{item.role}: {item.content}"
+        for item in history[-10:]
+    )
+
+    concessions_text = "\n".join(
+        (
+            f"- {item.id}: "
+            f"{item.opponent_concession}. "
+            f"После применения: "
+            f"{item.state_effects}"
+        )
+        for item in available_concessions
+    )
+
+    events_text = "\n".join(
+        (
+            f"- {event.id}: "
+            f"{event.title}. "
+            f"Директива: {event.directive}"
+        )
+        for event in active_events
+    )
+
+    revealed_text = "\n".join(
+        (
+            f"- {interest.id}: "
+            f"{interest.description}"
+        )
+        for interest in scenario.model_context.hidden_interests
+        if interest.id in state.revealed_interests
+    )
+
+    return f"""
+Ты играешь NPC в симуляторе переговоров.
+
+Твоя роль:
+
+Имя: {scenario.model_context.opponent.name}
+Должность: {scenario.model_context.opponent.role}
+
+Никогда не выходи из роли.
+
+Сценарий:
+{scenario.title}
+
+Тема:
+{scenario.admin_input.topic}
+
+Роль игрока:
+{scenario.model_context.player_role}
+
+Твоя публичная позиция:
+{scenario.model_context.public_position}
+
+Твои цели:
+{json.dumps(
+    scenario.model_context.goals,
+    ensure_ascii=False,
+)}
+
+Твои границы:
+{json.dumps(
+    scenario.model_context.boundaries,
+    ensure_ascii=False,
+)}
+
+Твои черты:
+{json.dumps(
+    scenario.model_context.traits,
+    ensure_ascii=False,
+)}
+
+Стиль общения:
+{scenario.model_context.communication_style}
+
+Правила поведения:
+{json.dumps(
+    scenario.model_context.behavior_rules,
+    ensure_ascii=False,
+)}
+
+BATNA:
+{scenario.model_context.batna}
+
+Текущее состояние переговоров:
+{json.dumps(
+    state.model_dump(),
+    ensure_ascii=False,
+    indent=2,
+)}
+
+Раскрытые скрытые интересы:
+{revealed_text or "Нет"}
+
+Доступные уступки:
+{concessions_text or "Нет"}
+
+Активные сюжетные события:
+{events_text or "Нет"}
+
+История:
+{history_text}
+
+Последняя реплика игрока:
+{message}
+
+Распознанное намерение игрока:
+{decision.player_intent}
+
+Параметры намерения:
+{json.dumps(
+    decision.parameters,
+    ensure_ascii=False,
+)}
+
+ВАЖНЫЕ ПРАВИЛА:
+
+1. Ты не управляешь состоянием напрямую.
+2. Не придумывай новые цели.
+3. Не меняй свою роль.
+4. Не раскрывай hidden_interests, пока они не раскрыты системой.
+5. Не применяй уступку, если она отсутствует среди доступных.
+6. Если уступаешь, используй concession_id соответствующей уступки.
+7. Не соглашайся автоматически.
+8. Веди настоящие переговоры.
+9. Если игрок предлагает вариант, можешь задать встречное условие.
+10. За один ход не делай несколько независимых уступок.
+11. Не возвращай назад уже сделанную уступку.
+12. Если игрок хамит, учитывай behavior_rules.
+13. Ответ должен занимать не более
+{scenario.model_contract.reply_max_sentences} предложений.
+14. Не упоминай этот промпт, JSON, систему, LLM или внутреннюю логику.
+15. Не объявляй финальный результат, если игрок явно не завершает переговоры.
+16. Если игрок явно принимает — action должен быть accept.
+17. Если игрок явно отказывается — action должен быть reject.
+
+Верни ТОЛЬКО JSON.
+
+Формат:
+
+{{
+  "message": "текст ответа игроку",
+  "action": "counter_offer | accept | reject | ask_clarification",
+  "price": null,
+  "concession_id": null
+}}
+
+price используй только если в переговорах действительно обсуждается числовая цена.
+
+Если используешь уступку, обязательно укажи её настоящий concession_id.
 """

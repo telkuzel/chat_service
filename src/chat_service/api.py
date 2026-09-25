@@ -1,8 +1,8 @@
 import os
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
 
 from .gigachat_client import GigaChatClient
 from .models import ChatRequest, ChatResponse
@@ -18,7 +18,6 @@ app = FastAPI(
 )
 
 
-# Разрешаем тестовый UI на порту 5500
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -60,11 +59,19 @@ def create_service() -> ChatService:
         == "true"
     )
 
+    temperature = float(
+        os.getenv(
+            "GIGACHAT_TEMPERATURE",
+            "0.7",
+        )
+    )
+
     client = GigaChatClient(
         credentials=credentials,
         scope=scope,
         model=model,
         verify_ssl_certs=verify_ssl_certs,
+        temperature=temperature,
     )
 
     return ChatService(client)
@@ -89,10 +96,14 @@ def chat(
 ):
 
     try:
-        return service.process_message(request)
 
-    except Exception as e:
+        return service.process_message(
+            request
+        )
+
+    except Exception as exc:
+
         raise HTTPException(
             status_code=500,
-            detail=str(e),
-        )
+            detail=str(exc),
+        ) from exc
